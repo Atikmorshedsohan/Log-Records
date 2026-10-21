@@ -1,6 +1,10 @@
-# Windows Log Collector (Fluent Bit + FastAPI + Supabase)
+# Cross-Platform Log Collector (Fluent Bit + FastAPI + Supabase)
 
-A lightweight, high-performance system log collection pipeline designed for Windows. It collects native **Windows Event Logs** (`System`, `Application`, and `Security`) using a direct **Fluent Bit** agent, forwards them to a **FastAPI** backend for validation and parsing, and stores them in **Supabase (PostgreSQL)** for real-time querying and visualization.
+A lightweight, high-performance system log collection pipeline designed for **Windows** and **Linux** without requiring Docker.
+
+- **On Windows**: Collects native Windows Event Logs (`System`, `Application`, and `Security`) via the `winlog` plugin.
+- **On Linux**: Collects native Systemd Journal logs (kernel, services, authentication, syslog) via the `systemd` plugin.
+- **Backend**: FastAPI normalizes and validates events across OS types and writes them in real time into **Supabase (PostgreSQL)**.
 
 ---
 
@@ -8,13 +12,13 @@ A lightweight, high-performance system log collection pipeline designed for Wind
 
 ```
 ┌──────────────────────────────────────────────┐
-│                  Windows Host                │
+│       Host System (Windows or Linux)         │
 │                                              │
-│   Windows Event Log (System, Application)    │
+│   Windows Event Log  OR  Systemd Journal     │
 │                       │                      │
 │                       ▼                      │
-│     Direct Native Fluent Bit Service/Agent   │
-│       (C:\Program Files\fluent-bit)          │
+│        Direct Native Fluent Bit Agent        │
+│    (windows.conf         linux.conf)         │
 │                       │                      │
 │                       ▼ HTTP POST (NDJSON)   │
 │             FastAPI Backend API              │
@@ -28,9 +32,6 @@ A lightweight, high-performance system log collection pipeline designed for Wind
              └─────────────────────┘
 ```
 
-### 💡 Why Native Fluent Bit (No Docker)?
-Windows Event Logs utilize the native Windows Event Logging API (`wevtapi.dll`). Running Fluent Bit inside Linux Docker containers cannot access host Windows kernel and system events. Running Fluent Bit natively directly on Windows ensures seamless, low-latency collection without virtualization overhead.
-
 ---
 
 ## 📁 Project Structure
@@ -38,13 +39,14 @@ Windows Event Logs utilize the native Windows Event Logging API (`wevtapi.dll`).
 ```
 Log collector/
 ├── backend/
-│   ├── main.py              # FastAPI application (endpoints: /ingest, /api/logs, /)
+│   ├── main.py              # FastAPI application (multi-OS normalization & ingestion)
 │   ├── requirements.txt     # Python dependencies (FastAPI, Supabase, Uvicorn, etc.)
 │   ├── test_api.py          # Automated test suite for endpoints
 │   ├── .env.example         # Template for environment variables
 │   └── .env                 # (Ignored) Secret Supabase keys & host config
 ├── fluent-bit/
 │   ├── windows.conf         # Direct Windows Fluent Bit config (winlog plugin)
+│   ├── linux.conf           # Direct Linux Fluent Bit config (systemd plugin)
 │   └── fluent-bit.yaml      # YAML alternative config
 ├── supabase_schema.sql      # Database schema, table definitions, and RLS policies
 ├── .gitignore               # Excludes secrets, venv, databases, and logs
@@ -67,85 +69,99 @@ Log collector/
 
 ### 2. Backend Setup (FastAPI)
 
-1. Open a PowerShell terminal in the project root:
-   ```powershell
-   cd "c:\Users\KINGDOM\Desktop\Log collector"
-   ```
+Runs on either Windows or Linux:
 
-2. Activate the virtual environment (or create one):
-   ```powershell
-   .\.venv\Scripts\activate
-   # If installing fresh:
-   # pip install -r backend/requirements.txt
-   ```
+```bash
+# Clone and enter directory
+cd "Log collector"
 
-3. Configure your environment:
-   Ensure `backend/.env` contains your Supabase credentials:
-   ```ini
-   HOST=0.0.0.0
-   PORT=8000
-   SUPABASE_URL=https://your-project-id.supabase.co
-   SUPABASE_KEY=your_supabase_anon_or_service_role_key
-   ```
+# Create and activate virtual environment
+# Windows:
+python -m venv .venv
+.\.venv\Scripts\activate
 
-4. Start the backend:
-   ```powershell
-   .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
+# Linux:
+python3 -m venv .venv
+source .venv/bin/activate
 
-5. Verify the backend is running:
-   Open `http://127.0.0.1:8000/` in your browser. It should return:
-   ```json
-   {
-     "service": "Computer Log Collector Backend",
-     "status": "healthy",
-     "supabase_connected": true
-   }
-   ```
+# Install dependencies
+pip install -r backend/requirements.txt
+```
+
+Configure `backend/.env` with your Supabase credentials:
+```ini
+HOST=0.0.0.0
+PORT=8000
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_KEY=your_supabase_anon_or_service_role_key
+```
+
+Start the backend:
+```bash
+# Windows
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Linux
+uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Verify backend health at `http://127.0.0.1:8000/` (`"supabase_connected": true`).
 
 ---
 
-### 3. Run Native Fluent Bit (Direct Ingestion)
+### 3. Run Fluent Bit Directly (No Docker)
 
-1. Ensure Fluent Bit for Windows is installed (default location: `C:\Program Files\fluent-bit`).
-2. In a separate PowerShell terminal (run as **Administrator** if collecting the `Security` channel), execute:
+#### Option A: On Windows
+1. Install Fluent Bit from the official website (installs to `C:\Program Files\fluent-bit`).
+2. Run in PowerShell (as **Administrator** if collecting the `Security` channel):
    ```powershell
    & "C:\Program Files\fluent-bit\bin\fluent-bit.exe" -c "fluent-bit\windows.conf"
    ```
 
-Fluent Bit will immediately begin streaming Windows Event Logs to your backend, which inserts them into Supabase.
+#### Option B: On Linux (Ubuntu / Debian / CentOS / RHEL)
+1. Install Fluent Bit directly on your Linux host:
+   ```bash
+   # Ubuntu / Debian official one-line install
+   curl https://raw.githubusercontent.com/fluent/fluent-bit/master/install.sh | sh
+   ```
+2. Run Fluent Bit directly using `linux.conf`:
+   ```bash
+   fluent-bit -c fluent-bit/linux.conf
+   ```
+3. *(Optional)* Run as a persistent background service on Linux:
+   ```bash
+   sudo systemctl enable fluent-bit
+   sudo systemctl start fluent-bit
+   ```
 
 ---
 
-## ⚙️ Fluent Bit Configuration Details (`windows.conf`)
+## ⚙️ Configuration Comparison
 
-- **`[INPUT] (winlog)`**:
-  - `Channels System,Application`: Collects system and application events. (Add `Security` when running with Administrator privileges).
-  - `Interval_Sec 1`: Polls for new events every second.
-  - `DB winlog.db`: Tracks offset in a local SQLite file so duplicate events are never re-sent across restarts.
-- **`[FILTER] (record_modifier)`**:
-  - Attaches standard tags (`os_type: windows`, `hostname`).
-- **`[OUTPUT] (http)`**:
-  - Forwards records via HTTP POST to `http://127.0.0.1:8000/ingest` using efficient `json_lines` format.
+| Feature | Windows (`windows.conf`) | Linux (`linux.conf`) |
+| :--- | :--- | :--- |
+| **Plugin** | `winlog` | `systemd` |
+| **Log Source** | Event Log (`System`, `Application`) | Systemd Journal (`/run/log/journal`) |
+| **Offset DB** | `winlog.db` (local SQLite) | `/var/log/fluent-bit-systemd.db` |
+| **OS Tag** | `os_type windows` | `os_type linux` |
+| **Target Output** | `http://127.0.0.1:8000/ingest` | `http://127.0.0.1:8000/ingest` |
 
 ---
 
 ## 📊 Viewing Ingested Logs
 
-You can view the logs stored in Supabase:
-1. Open your Supabase Dashboard $\rightarrow$ **Table Editor** $\rightarrow$ select **`computer_events`**.
-2. Or query via the **SQL Editor**:
-   ```sql
-   SELECT id, hostname, event_category, event_level, source, message, received_at
-   FROM public.computer_events
-   ORDER BY received_at DESC
-   LIMIT 50;
-   ```
+Open your **[Supabase Table Editor](https://supabase.com/dashboard)** under `public.computer_events`, or run in SQL Editor:
+
+```sql
+SELECT id, hostname, os_type, event_category, event_level, source, message, received_at
+FROM public.computer_events
+ORDER BY received_at DESC
+LIMIT 50;
+```
 
 ---
 
 ## 🔒 Security Best Practices
 
-- All secrets (`.env`) are excluded from Git via `.gitignore`.
-- Only use `.env.example` as a template.
-- Optional: Configure `COLLECTOR_TOKEN` in `backend/.env` and `windows.conf` if you want token-based request authorization on the `/ingest` endpoint.
+- All sensitive keys (`.env`) are strictly ignored via `.gitignore`.
+- If sending logs from a remote Linux/Windows machine to your central FastAPI server, replace `127.0.0.1` in the config output with your server's IP address.

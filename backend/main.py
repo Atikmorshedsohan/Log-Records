@@ -84,13 +84,13 @@ async def collect_logs(
     def map_to_computer_event(item: dict) -> dict:
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         
-        hostname = item.get("hostname") or item.get("Computer") or item.get("host") or "unknown-host"
-        os_type = item.get("os_type") or "windows"
+        hostname = item.get("hostname") or item.get("_HOSTNAME") or item.get("Computer") or item.get("host") or "unknown-host"
+        os_type = item.get("os_type") or ("linux" if "_SYSTEMD_UNIT" in item or "_HOSTNAME" in item else "windows")
         event_time = item.get("event_time") or item.get("TimeCreated") or item.get("TimeGenerated") or item.get("timestamp") or now_iso
-        event_category = item.get("event_category") or item.get("Channel") or item.get("channel")
-        event_level = item.get("event_level") or item.get("Level") or item.get("level")
-        source = item.get("source") or item.get("ProviderName") or item.get("SourceName")
-        message = item.get("message") or item.get("Message") or item.get("Description")
+        event_category = item.get("event_category") or item.get("_SYSTEMD_UNIT") or item.get("Channel") or item.get("channel")
+        event_level = item.get("event_level") or item.get("PRIORITY") or item.get("Level") or item.get("level")
+        source = item.get("source") or item.get("SYSLOG_IDENTIFIER") or item.get("_COMM") or item.get("ProviderName") or item.get("SourceName")
+        message = item.get("message") or item.get("MESSAGE") or item.get("log") or item.get("Message") or item.get("Description")
 
         return {
             "hostname": str(hostname),
