@@ -1,14 +1,13 @@
 service:
   flush: 5
   log_level: info
-  storage.path: C:/fluent-bit/storage
 
 pipeline:
   inputs:
     - name: winlog
-      channels: System,Application,Security
+      channels: System,Application
       interval_sec: 1
-      db: C:/fluent-bit/winlog.db
+      db: winlog.db
       tag: windows.events
 
   filters:
@@ -21,10 +20,9 @@ pipeline:
   outputs:
     - name: http
       match: windows.*
-      host: 127.0.0.1  # Change to host.docker.internal if Fluent Bit runs in Docker
+      host: 127.0.0.1
       port: 8000
       uri: /ingest
       format: json_lines
       tls: off
-      headers:
-        - "X-Collector-Token: YOUR_COLLECTOR_TOKEN"
+

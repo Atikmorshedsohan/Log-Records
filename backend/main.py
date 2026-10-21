@@ -111,8 +111,8 @@ async def collect_logs(
             for item in raw_items
         ]
         try:
-            response = supabase.table("computer_events").insert(mapped_records).execute()
-            return {"status": "success", "inserted": len(mapped_records), "data": response.data}
+            supabase.table("computer_events").insert(mapped_records).execute()
+            return {"status": "success", "inserted": len(mapped_records)}
         except Exception as err:
             raise HTTPException(
                 status_code=500,
